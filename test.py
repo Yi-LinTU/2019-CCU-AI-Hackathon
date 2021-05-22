@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -9,28 +10,26 @@ from torchvision import transforms
 from dataset import IMAGE_Dataset
 
 CUDA_DEVICES = 0
-DATASET_ROOT = './test'
-PATH_TO_WEIGHTS = ''  # weight path
 
 
 def sortSecond(val):
     return val[1]
 
 
-def test():
+def test(args):
     data_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
             0.229, 0.224, 0.225])
     ])
-    test_set = IMAGE_Dataset(Path(DATASET_ROOT), data_transform)
+    test_set = IMAGE_Dataset(Path(args.img_dir), data_transform)
     data_loader = DataLoader(
         dataset=test_set, batch_size=32, shuffle=False, num_workers=1)
-    classes = [_dir.name for _dir in Path(DATASET_ROOT).glob('*')]
+    classes = [_dir.name for _dir in Path(args.img_dir).glob('*')]
 
     # load model
-    model = torch.load(PATH_TO_WEIGHTS)
+    model = torch.load(args.weights)
     model = model.cuda(CUDA_DEVICES)
     model.eval()
 
@@ -40,10 +39,9 @@ def test():
     class_correct = list(0. for i in enumerate(classes))
     class_total = list(0. for i in enumerate(classes))
 
-    classes_num = 38
-    label_num = torch.zeros((1, classes_num))
-    predict_num = torch.zeros((1, classes_num))
-    acc_num = torch.zeros((1, classes_num))
+    label_num = torch.zeros((1, args.class_num))
+    predict_num = torch.zeros((1, args.class_num))
+    acc_num = torch.zeros((1, args.class_num))
 
     # csv
     import csv
@@ -77,7 +75,8 @@ def test():
                 p_num = int(predicted[i])
                 l_num = int(labels[i])
 
-                print(paths[i], p_num, l_num)
+                # print gt
+                # print('{}\t{}\t{}'.format(paths[i], p_num, l_num))
                 with open('agriculture.csv', 'a', newline='') as csvFile:
                     writer = csv.writer(csvFile)
                     writer.writerow([paths[i], p_num])
@@ -98,9 +97,6 @@ def test():
         F1 = 2 * recall * precision / (recall + precision)
         accuracy = acc_num.sum(1) / label_num.sum(1)
 
-        # print(F1)
-        print(accuracy)
-
     F1_num = F1.numpy()
     for i, c in enumerate(classes):
         print('Accuracy of %5s : %8.4f %%' % (
@@ -116,10 +112,18 @@ def test():
           % (100 * total_correct / total))
 
     # f1-score
-    f1_score = 100 * (F1.sum()) / classes_num
+    f1_score = 100 * (F1.sum()) / args.class_num
     print('Total f1-score : %4f %%' % (f1_score))
     csvFile.close()
 
 
+# Arguments
+parser = argparse.ArgumentParser(description="2019 CCU AI Hackathon")
+parser.add_argument('-c', '--class_num', type=int, help='number of classes', required=True)
+parser.add_argument('-i', '--img_dir', type=str, help='training images folder', required=True)
+parser.add_argument('-w', '--weights', type=str, help='input weights', required=True)
+args = parser.parse_args()
+
 if __name__ == '__main__':
-    test()
+    print('-'*64)
+    test(args)

@@ -1,4 +1,7 @@
+import argparse
 import copy
+import errno
+import os
 import time
 from pathlib import Path
 
@@ -20,7 +23,6 @@ torch.backends.cudnn.benchmark = False
 # CUDA_DEVICES = args.cuda_devices
 # DATASET_ROOT = args.path
 CUDA_DEVICES = 0
-DATASET_ROOT = './train'
 
 init_lr = 0.01
 
@@ -31,7 +33,7 @@ def adjust_lr(optimizer, epoch):
         param_group['lr'] = lr
 
 
-def train():
+def train(args):
     data_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
@@ -40,10 +42,10 @@ def train():
 
     resnet152 = Model_ResNet.resnet152(pretrained=True)
     fc_features = resnet152.fc.in_features
-    resnet152.fc = nn.Linear(fc_features, 38)
+    resnet152.fc = nn.Linear(fc_features, args.class_num)
 
     # print(DATASET_ROOT)
-    train_set = IMAGE_Dataset(Path(DATASET_ROOT), data_transform)
+    train_set = IMAGE_Dataset(Path(args.img_dir), data_transform)
     data_loader = DataLoader(dataset=train_set, batch_size=16, shuffle=True, num_workers=1)
     # print(train_set.num_classes)
 
@@ -53,7 +55,6 @@ def train():
 
     best_model_params = copy.deepcopy(model.state_dict())
     best_acc = 0.0
-    num_epochs = 15
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(params=model.parameters(), lr=init_lr, momentum=0.88)
 
@@ -62,11 +63,11 @@ def train():
     with open('TrainingLoss.txt', 'w') as fLoss:
         print('Loss\n', file=fLoss)
 
-    for epoch in range(num_epochs):
+    for epoch in range(args.epochs):
         localtime = time.asctime(time.localtime(time.time()))
 
-        print('Epoch: {}/{} --- < Starting Time : {} >'.format(epoch + 1, num_epochs, localtime))
-        print('-' * len('Epoch: {}/{} --- < Starting Time : {} >'.format(epoch + 1, num_epochs, localtime)))
+        print('Epoch: {}/{} --- < Starting Time : {} >'.format(epoch + 1, args.epochs, localtime))
+        print('-' * len('Epoch: {}/{} --- < Starting Time : {} >'.format(epoch + 1, args.epochs, localtime)))
 
         training_loss = 0.0
         training_corrects = 0
@@ -106,11 +107,28 @@ def train():
             print('{:.4f} '.format(training_loss), file=fLoss)
 
         if (epoch + 1) % 3 == 0:
-            torch.save(model, 'model-epoch-{:2d}-train.pth'.format(epoch + 1))
+            torch.save(model, 'weights/model-epoch-{:2d}-train.pth'.format(epoch + 1))
 
     model.load_state_dict(best_model_params)
-    torch.save(model, 'model-{:.2f}-best_train_acc.pth'.format(best_acc))
+    torch.save(model, 'weights/model-{:.2f}-best_train_acc.pth'.format(best_acc))
 
+
+# Arguments
+parser = argparse.ArgumentParser(description="2019 CCU AI Hackathon")
+parser.add_argument('-c', '--class_num', type=int, help='number of classes', required=True)
+parser.add_argument('-e', '--epochs', type=int, help='training epochs', required=True)
+parser.add_argument('-i', '--img_dir', type=str, help='training images folder', required=True)
+args = parser.parse_args()
 
 if __name__ == '__main__':
-    train()
+
+    try:
+        try:
+            os.makedirs('weights')
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                raise e
+
+        train(args)
+    except Exception as ex:
+        print(ex)
